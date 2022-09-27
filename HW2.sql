@@ -104,29 +104,62 @@ end
 go
 
 exec spBooksinCat 100
+go
 ----------------------------------------------------------------------------
 
---7 NOT WORKING)
+--7 WORKING)
 create proc spbookCheckout
 (
 @pid int,
-@isbn nchar(13))
+@bCopyID int)
 as
 begin
-	declare @bCopyBorrowed int
-	Insert into BookCopyBorrowed(patronID)
-	Values (@pid)
-	set @bCopyBorrowed = @@IDENTITY
-
-
-	Insert into BookCopyBorrowed (
-
-
-
-
+  insert into BookCopyBorrowed(patronID, dateTimeBorrowed, dateTimeDue, bookCopyID)
+  values(@pid, GETDATE(), GETDATE()+1, @bCopyID)
 end
 go
 
+exec spbookCheckout 300, 505
+go
+----------------------------------------------------------------------------
+--8 WORKING)
+create proc spbookReturn
+(
+@pid int,
+@bCopyID int)
+as
+Begin
+	Update BookCopyBorrowed
+	set dateTimeReturned = GetDate()
+	where patronID = @pid and bookCopyID = @bCopyID
+end
+go
+exec spbookReturn 300, 505
+go
+----------------------------------------------------------------------------
+--9 WORKING)
+create proc spbookLate
+(
+@sDate datetime,
+@dueDate datetime)
+as
+Begin
+	select Patron.patronID, Patron.patronLastname, Patron.patronEmail, Count(BookCopyBorrowed.patronID)
+
+	from Patron inner join BookCopyBorrowed
+
+	on Patron.patronID = BookCopyBorrowed.patronID
+
+	where dateTimeBorrowed >= @sDate and dateTimeDue <= @dueDate and dateTimeReturned > dateTimeDue
+
+	group by Patron.patronId, Patron.patronLastname, Patron.patronEmail
+end
+
+go
+
+exec spbookLate '2022-08-09', '2022-09-13'
+go
+----------------------------------------------------------------------------
 --10 WORKING)
 create proc spAddPatron
 (
@@ -166,7 +199,23 @@ exec spAddPatron
 print @pid
 go
 ----------------------------------------------------------------------------
+--11 WORKING)
+create proc spupdatePriceCopy
+(
+@bcID int,
+@isbn nchar(13),
+@bPrice decimal(6,2))
+as
+Begin
+	Update BookCopy
+	Set bookPrice = @bPrice
+	Where bookCopyID = @bcID and isbn = @isbn
+end
+go
 
+exec spupdatePriceCopy 500, 9781118102282, 17.00
+go
+----------------------------------------------------------------------------
 
 --12 WORKING)
 create proc spInsertBook
@@ -193,21 +242,28 @@ exec spInsertBook
 go
 ----------------------------------------------------------------------------
 
---13)
-create proc spAddBookCopy
+--13 1/2 WORKING)
+create or alter proc spAddBookCopy
 (
-@bCopyID int,
-@isbn nchar(13))
+@isbn nchar(13),
+@cNum int,
+@checkOutStat nvarchar(20),
+@bPrice decimal(6,2),
+@libraryID int)
 As 
 Begin
 	
-			(select bookCopyID from BookCopy
-			 where bookCopyID = @bCopyID and isbn = @isbn)
-			 Update BookCopy
-			 Set copyNumber = copyNumber + 1
-			 where bookCopyID = @bCopyID and isbn = @isbn
+			declare @bCopyID int
+			Insert into BookCopy(isbn, copyNumber, checkOutStatus, bookPrice, libraryID)
+			Values (@isbn, @cNum, @checkOutStat, @bPrice, @libraryID)
+			set @bCopyID = @@IDENTITY
+
+			-- I believe from here you are supposed to inner join Book on Bookcopy
+			--This is so that you can link the book that you want to create another copy with
+			-- something like the last proc from in class, I am just unsure how how to do the update copy part
+
+
 
 End
 go
 
-exec spAddBookCopy 500, 9781118102282
