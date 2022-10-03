@@ -555,3 +555,268 @@ Begin
 End
 
 exec spCreateCustomerOrder 1460, '12345678-1234-1234-1234-123456789012'
+--1) 
+create proc spGetAllCategories
+as
+begin 
+		select * from Category
+end 
+go 
+/*
+exec spGetAllCategories
+go
+*/
+--2)
+alter proc spGetAllProductsInCategoryByName
+(@catName nvarchar(100) = null)
+as
+begin 
+	select c.CategoryName, p.ProductName
+	from Category c inner join Products p
+	on c.CategoryID = p.CategoryID
+	where CategoryName like '%' + @catName + '%' or 
+	CategoryName=isnull(@catName, CategoryName) 
+
+end
+go
+/*
+exec spGetAllProductsInCategoryByName 
+go
+*/
+go
+--3) 
+create proc spSearchByProductName
+(@name nvarchar(100))
+as
+begin
+	select * from Products
+	where ProductName like '%' + @name + '%' 
+end 
+go
+/*
+exec spSearchByProductName 'Green'
+go
+*/
+
+--4) 
+alter proc spEmployeeInfo 
+(@Lname nvarchar(50),
+@Fname nvarchar(50),
+@title nvarchar(50),
+@phone nvarchar(50) = null,
+@empID int output)
+as
+begin  
+	Insert into Employees (LastName, FirstName, JobTitle, Phone) 
+	values (@Lname, @Fname,@title, @phone)
+	set @empID = @@IDENTITY
+end
+go
+/*
+exec spEmployeeInfo 'Lane', 'Sarah', 'CEO', null,
+@empID = @eID
+
+declare @eID int 
+exec spEmployeeInfo 'Smith', 'John', 'Accountant', '304-832-2420',
+@empID = @eID 
+go
+*/
+go
+
+--5
+alter proc spHighestQty 
+(@prodID int) 
+as
+begin 
+	select @prodID as ProductID, MAX(pod.Quantity) as HighestQuantity 
+	from PurchaseOrderDetails pod inner join Products p
+	on pod.ProductID = p.ProductID
+	where pod.ProductID = @prodID
+	group by p.ProductID 
+	
+
+end
+/*
+exec spHighestQty 108 
+*/
+go
+--6
+alter proc spCreatePurchaseOrder
+(@empID int,
+@StatusID int,
+@ApprovedBy int,
+@purchaseID int output)
+as
+begin
+	insert into PurchaseOrders(CreationDate, StatusID, ExpectedDate, ApprovedBy, ApprovedDate, EmpID) 
+	values (GETDATE(), @StatusID, GETDATE(), @ApprovedBy, GETDATE(), @empID) 
+	set @purchaseID = @@IDENTITY
+
+end
+/* 5 purchase orders: 
+exec spCreatePurchaseOrder
+@StatusID = 600,
+@ApprovedBy = 30,
+@empID = 400, 
+@purchaseID = @pid 
+
+exec spCreatePurchaseOrder
+@StatusID = 700,
+@ApprovedBy = 40,
+@empID = 400, 
+@purchaseID = @pid 
+
+exec spCreatePurchaseOrder
+@StatusID = 650,
+@ApprovedBy = 50,
+@empID = 402, 
+@purchaseID = @pid 
+
+exec spCreatePurchaseOrder
+@StatusID = 620,
+@ApprovedBy = 60,
+@empID = 403, 
+@purchaseID = @pid
+
+declare @pid int
+exec spCreatePurchaseOrder
+@StatusID = 820,
+@ApprovedBy = 30,
+@empID = 402, 
+@purchaseID = @pid 
+*/
+go
+--7 
+create proc spAddPurchaseDetails
+(@purchaseDetailID int output,
+@orderID int,
+@productID int, 
+@quantity int,
+@unitcost money,
+@postedToInv bit, 
+@invID int) 
+as
+begin 
+	insert into PurchaseOrderDetails(PurchaseOrderID, ProductID, Quantity, UnitCost, PostedToInventory,InventoryID) 
+	values(@orderID, @productID, @quantity, @unitcost, @postedToInv, @invID) 
+	set @purchaseDetailID = @@IDENTITY 
+	
+end 
+go
+/*
+exec spAddPurchaseDetails 
+@orderID = 500,
+@productID = 103, 
+@quantity= 1, 
+@unitcost= 6, 
+@postedToInv= 18, 
+@invID= 303,
+@purchaseDetailID=@pdID 
+
+declare @pdID int
+exec spAddPurchaseDetails
+@orderID = 505,
+@productID = 105, 
+@quantity= 2, 
+@unitcost= 5, 
+@postedToInv= 15, 
+@invID= 307,
+@purchaseDetailID=@pdID 
+
+declare @pdID int
+exec spAddPurchaseDetails
+@orderID = 507,
+@productID = 108, 
+@quantity= 3, 
+@unitcost= 4, 
+@postedToInv= 20, 
+@invID= 309,
+@purchaseDetailID=@pdId
+*/
+
+--8 
+create proc spDeletePurchaseOrderDetail
+(@orderdetailID int) 
+as
+begin
+	delete from PurchaseOrderDetails
+	where OrderDetailID = @orderdetailID
+end 
+go
+/*
+exec spDeletePurchaseOrderDetail 602
+*/	
+go
+--9 
+create proc spUpdateDates
+(@purchaseID int, 
+@apprDate datetime2(7))
+as
+begin
+	if exists 
+		(select PurchaseOrderID from PurchaseOrders
+		where PurchaseOrderID = @purchaseID) 
+		update PurchaseOrders 
+		set ApprovedDate = @apprDate
+	else 
+		insert into PurchaseOrders (PurchaseOrderID, ApprovedDate)
+		values (@purchaseID, GETDATE())
+	
+end
+go
+
+
+/*
+exec spUpdateDates 504, '2022-12-15'
+*/
+--10 
+
+go
+
+create proc spCalculatePrice
+(@orderDetailID int) 
+as
+begin
+	select(Quantity * UnitCost) as Total
+	from PurchaseOrderDetails
+	where(OrderDetailID=@orderDetailID) 
+end
+go
+/*
+exec spCalculatePrice 602
+*/
+--11
+alter proc spTotalOrder
+(@purchaseorderID int)
+as
+begin
+	select p.PurchaseOrderID, SUM(UnitCost * Quantity) as Total 
+	from PurchaseOrderDetails pd inner join PurchaseOrders p 
+	on pd.PurchaseOrderID = p.PurchaseOrderID 
+
+	where p.PurchaseOrderID = @purchaseorderID
+	group by p.PurchaseOrderID
+end 
+go
+/*
+exec spTotalOrder 500
+*/
+go
+
+--12
+
+create proc spBiggestSupplier 
+(@supID int) 
+as
+begin 
+	select Company, s.LastName, s.State, COUNT(s.SupplierID) as NumberofProducts 
+	from Products p inner join Suppliers s
+	on p.SupplierID = s.SupplierID 
+	group by s.Company, s.LastName, s.State  
+end 
+
+
+go
+/*
+exec spBiggestSupplier 303
+*/
